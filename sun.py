@@ -1,4 +1,5 @@
 import bpy
+import random
 
 # --- CONFIGURATION ---
 SUN_RADIUS = 3.0
@@ -10,53 +11,71 @@ def setup_scene():
     bpy.ops.object.delete()
 
     # 2. Create Sun
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=SUN_RADIUS)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=128, ring_count=64, radius=SUN_RADIUS)
     sun = bpy.context.active_object
     sun.name = "Sun"
     bpy.ops.object.shade_smooth()
+    
+    # 2.5 Boiling Plasma (Displacement)
+    mod_disp = sun.modifiers.new(name="Boil", type='DISPLACE')
+    tex_noise = bpy.data.textures.new("Plasma", type='VORONOI')
+    tex_noise.noise_scale = 0.2
+    mod_disp.texture = tex_noise
+    mod_disp.strength = 0.1
+    driver = mod_disp.driver_add("mid_level")
+    driver.driver.expression = "frame / 100.0"
 
-    # 3. Enhanced Material
+    # 3. Material (Principled BSDF + SSS for "Hot" Volume)
     mat = bpy.data.materials.new(name="SunMaterial")
     mat.use_nodes = True
     nodes = mat.node_tree.nodes; nodes.clear()
-    
     out = nodes.new('ShaderNodeOutputMaterial')
-    emit = nodes.new('ShaderNodeEmission')
+    bsdf = nodes.new('ShaderNodeBsdfPrincipled')
     tex = nodes.new('ShaderNodeTexImage')
-    # Mix node to control the orange tint
-    mix = nodes.new('ShaderNodeMixRGB')
-    mix.blend_type = 'MULTIPLY'
-    mix.inputs[0].default_value = 1.0 # Factor
-    mix.inputs[1].default_value = (1.0, 0.3, 0.05, 1) # Deep Orange Tint
+    
+    # Realistic Sun Material Settings
+    bsdf.inputs['Emission Strength'].default_value = 2.0
+    bsdf.inputs['Subsurface Weight'].default_value = 0.5 # Adds glowing depth
+    bsdf.inputs['Subsurface Radius'].default_value = (1.0, 0.2, 0.1) # Red/Orange scatter
+    bsdf.inputs['Roughness'].default_value = 0.8
     
     try:
         tex.image = bpy.data.images.load(SUN_TEX_PATH)
-    except:
-        pass
-    
-    # Keep Strength low (1.0 - 2.0) so the texture doesn't blow out
-    emit.inputs['Strength'].default_value = 1.5
-    fcurve = emit.inputs['Strength'].driver_add('default_value')
-    fcurve.driver.expression = "1.5 + sin(frame / 5) * 0.5" 
-    
-    # Linking: Texture -> Multiply (Orange Tint) -> Emission -> Surface
+        links = mat.node_tree.links
+        links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+        links.new(tex.outputs['Color'], bsdf.inputs['Emission Color'])
+    except: pass 
+        
     links = mat.node_tree.links
-    links.new(tex.outputs['Color'], mix.inputs[2])
-    links.new(mix.outputs['Color'], emit.inputs['Color'])
-    links.new(emit.outputs['Emission'], out.inputs['Surface'])
+    links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     sun.data.materials.append(mat)
 
-    # 4. Light (Keep it separate from the surface emission)
-    bpy.ops.object.light_add(type='POINT', location=(0, 0, 0))
-    light = bpy.context.active_object
-    light.data.energy = 2000 # Lower energy = texture remains visible
-    light.data.color = (1.0, 0.5, 0.1) # Light itself is orange
+    # 3.5 SOLAR FLARES
+    bpy.context.view_layer.objects.active = sun
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.1)
+    flare_obj = bpy.context.active_object
+    flare_obj.hide_viewport = True; flare_obj.hide_render = True
+    
+    bpy.context.view_layer.objects.active = sun
+    bpy.ops.object.particle_system_add()
+    psys = sun.particle_systems[0]
+    psys.settings.render_type = 'OBJECT'
+    psys.settings.instance_object = flare_obj
+    psys.settings.count = 500
+    psys.settings.lifetime = 30
+    psys.settings.normal_factor = 0.8
+    psys.settings.brownian_factor = 0.1
 
-    # 5. Camera
+    # 4. LIGHTING
+    bpy.ops.object.light_add(type='POINT', location=(0, 0, 0))
+    light = bpy.context.active_object; light.data.energy = 60000
+    light.data.color = (1.0, 0.5, 0.2) # Deep "Hot" Orange
+
+    # 5. CAMERA
     bpy.ops.object.camera_add(location=(0, -15, 0), rotation=(1.57, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
 
-    # 6. Render Settings
+    # 6. RENDER
     bpy.context.scene.render.engine = 'CYCLES'
     bpy.context.scene.cycles.samples = 128
 

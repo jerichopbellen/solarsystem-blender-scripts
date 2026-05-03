@@ -121,7 +121,7 @@ def setup_scene():
 
     # 6. Lighting
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
-    bpy.context.active_object.data.energy = 75000 
+    bpy.context.active_object.data.energy = 60000 
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
     bpy.context.active_object.data.energy = 6000
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))

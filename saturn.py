@@ -1,4 +1,5 @@
 import bpy
+import math
 
 # --- CONFIGURATION ---
 SATURN_RADIUS = 3.0 
@@ -12,31 +13,34 @@ def setup_scene():
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
 
-    # 2. Create Saturn
+    # 2. Create Saturn (High Resolution + Subdivision)
     bpy.ops.mesh.primitive_uv_sphere_add(segments=128, ring_count=64, radius=SATURN_RADIUS)
     saturn = bpy.context.active_object
     saturn.name = "SaturnBody"
+    
+    # Add Subdivision Surface to ensure the planet edge is perfectly round in video
+    subsurf = saturn.modifiers.new(name="Subsurf", type='SUBSURF')
+    subsurf.levels = 2
+    subsurf.render_levels = 2
     bpy.ops.object.shade_smooth()
 
-    # 3. Create Saturn's Rings (The Belt)
-    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, 0))
+    # 3. Create Saturn's Rings (Donut Flat - Your Method with 512 vertices)
+    # 512 vertices ensures the ring doesn't look like a polygon in the render
+    bpy.ops.mesh.primitive_circle_add(vertices=512, radius=RING_OUTER_RADIUS, fill_type='NGON')
     rings = bpy.context.active_object
     rings.name = "SaturnRings"
     
     bpy.ops.object.editmode_toggle()
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.transform.resize(value=(RING_OUTER_RADIUS - RING_INNER_RADIUS, 1, 1))
-    bpy.ops.transform.translate(value=((RING_INNER_RADIUS + RING_OUTER_RADIUS) / 2, 0, 0))
+    bpy.ops.mesh.inset(thickness=(RING_OUTER_RADIUS - RING_INNER_RADIUS))
+    bpy.ops.mesh.delete(type='FACE')
     bpy.ops.object.editmode_toggle()
-
-    screw = rings.modifiers.new(name="RingScrew", type='SCREW')
-    screw.angle = 6.28319 
-    screw.steps = 128
+    
+    # Shade smooth the ring surface
+    bpy.ops.object.shade_smooth()
     
     rings.parent = saturn
 
     # 4. Materials
-    # Saturn Material
     s_mat = bpy.data.materials.new(name="SaturnMat")
     s_mat.use_nodes = True
     try:
@@ -47,57 +51,93 @@ def setup_scene():
     except: pass
     saturn.data.materials.append(s_mat)
 
-    # Ring Material
+    # Ring Material (Radial Mapping)
     r_mat = bpy.data.materials.new(name="RingMat")
     r_mat.use_nodes = True
     r_mat.blend_method = 'HASHED'
     nodes = r_mat.node_tree.nodes
     links = r_mat.node_tree.links
-    bsdf = nodes["Principled BSDF"]
+    nodes.clear()
+
+    node_out = nodes.new('ShaderNodeOutputMaterial')
+    node_bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+    node_tex = nodes.new('ShaderNodeTexImage')
+    node_coord = nodes.new('ShaderNodeTexCoord')
+    node_sep = nodes.new('ShaderNodeSeparateXYZ')
+    node_math_x = nodes.new('ShaderNodeMath'); node_math_x.operation = 'POWER'; node_math_x.inputs[1].default_value = 2
+    node_math_y = nodes.new('ShaderNodeMath'); node_math_y.operation = 'POWER'; node_math_y.inputs[1].default_value = 2
+    node_add = nodes.new('ShaderNodeMath'); node_add.operation = 'ADD'
+    node_sqrt = nodes.new('ShaderNodeMath'); node_sqrt.operation = 'SQRT'
+    node_map = nodes.new('ShaderNodeMapRange')
+    node_map.inputs[1].default_value = RING_INNER_RADIUS 
+    node_map.inputs[2].default_value = RING_OUTER_RADIUS 
+    node_vec = nodes.new('ShaderNodeCombineXYZ')
 
     try:
-        tex = nodes.new('ShaderNodeTexImage')
-        tex.image = bpy.data.images.load(RING_TEX_PATH)
-        links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
-        links.new(tex.outputs['Color'], bsdf.inputs['Emission Color'])
-        bsdf.inputs['Emission Strength'].default_value = 0.15 
+        node_tex.image = bpy.data.images.load(RING_TEX_PATH)
+        links.new(node_coord.outputs['Object'], node_sep.inputs['Vector'])
+        links.new(node_sep.outputs['X'], node_math_x.inputs[0])
+        links.new(node_sep.outputs['Y'], node_math_y.inputs[0])
+        links.new(node_math_x.outputs['Value'], node_add.inputs[0])
+        links.new(node_math_y.outputs['Value'], node_add.inputs[1])
+        links.new(node_add.outputs['Value'], node_sqrt.inputs[0])
+        links.new(node_sqrt.outputs['Value'], node_map.inputs[0])
+        links.new(node_map.outputs['Result'], node_vec.inputs[0])
+        links.new(node_vec.outputs['Vector'], node_tex.inputs['Vector'])
         
-        ramp = nodes.new('ShaderNodeValToRGB')
-        ramp.color_ramp.elements[0].position = 0.05 
-        links.new(tex.outputs['Alpha'], ramp.inputs['Fac'])
-        links.new(ramp.outputs['Color'], bsdf.inputs['Alpha'])
+        links.new(node_tex.outputs['Color'], node_bsdf.inputs['Base Color'])
+        links.new(node_tex.outputs['Color'], node_bsdf.inputs['Emission Color'])
+        node_bsdf.inputs['Emission Strength'].default_value = 0.1 
+        
+        m_solid = nodes.new('ShaderNodeMath')
+        m_solid.operation = 'MULTIPLY'; m_solid.inputs[1].default_value = 3.0
+        links.new(node_tex.outputs['Alpha'], m_solid.inputs[0])
+        links.new(m_solid.outputs['Value'], node_bsdf.inputs['Alpha'])
     except: pass
+
+    links.new(node_bsdf.outputs['BSDF'], node_out.inputs['Surface'])
     rings.data.materials.append(r_mat)
 
-    # 5. ANIMATION (Horizontal Spin)
+    # 5. ANIMATION
     saturn.rotation_euler = (0, 0, 0)
     saturn.keyframe_insert(data_path="rotation_euler", frame=1)
-    saturn.rotation_euler = (0, 0, 6.28319)
+    saturn.rotation_euler = (0, 0, math.radians(360))
     saturn.keyframe_insert(data_path="rotation_euler", frame=250)
 
-    # 6. LIGHTING (Synced to Jupiter Setup)
-    # Key Light
+    # 6. LIGHTING (BLENDER 5.1 COMPATIBLE)
+    # Main Sun
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
-    light_main = bpy.context.active_object
-    light_main.data.energy = 35000 
+    bpy.context.active_object.data.energy = 30000 
     
-    # Rim Light (Powerful highlight)
+    # Rim Light
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
-    light_rim = bpy.context.active_object
-    light_rim.name = "RimLight"
-    light_rim.data.energy = 8000
+    bpy.context.active_object.data.energy = 1000
     
-    # Fill Light (Low contrast)
+    # Fill Light (Side)
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))
-    light_fill = bpy.context.active_object
-    light_fill.data.energy = 400 
+    bpy.context.active_object.data.energy = 400 
 
-    # 7. CAMERA (Your Z=4 preference)
+    # Bottom Fill
+    bpy.ops.object.light_add(type='POINT', location=(0, -5, -8))
+    bottom_light = bpy.context.active_object
+    bottom_light.name = "BottomFill"
+    bottom_light.data.energy = 500
+    # Specular fix for 5.1
+    bottom_light.data.specular_factor = 0.0 
+
+    # 7. CAMERA
     bpy.ops.object.camera_add(location=(0, -22, 4), rotation=(1.4, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
 
-    # 8. RENDER
+    # 8. RENDER SETTINGS
     bpy.context.scene.render.engine = 'CYCLES'
-    bpy.context.scene.cycles.samples = 64
+    bpy.context.scene.cycles.samples = 512
+    bpy.context.scene.cycles.filter_width = 2.0  
+    # Critical for video quality
+    bpy.context.scene.render.use_motion_blur = True
+    bpy.context.scene.view_settings.look = 'AgX - Medium High Contrast'
+    
+    bpy.context.scene.render.resolution_x = 1920
+    bpy.context.scene.render.resolution_y = 1080
 
 setup_scene()

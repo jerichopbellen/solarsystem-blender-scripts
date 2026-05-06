@@ -42,18 +42,21 @@ def setup_scene():
     links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     uranus.data.materials.append(mat)
 
-    # 3.5 ROTATION & AXIAL TILT
-    uranus.rotation_euler[0] = math.radians(98)
+    # 3.5 ROTATION (NO TILT)
+    # Set starting rotation to zero (no axial tilt)
+    uranus.rotation_euler = (0, 0, 0)
     uranus.keyframe_insert(data_path="rotation_euler", frame=1)
+    
+    # Rotate 360 degrees around the Z-axis (vertical spin)
     uranus.rotation_euler[2] = math.radians(360)
     uranus.keyframe_insert(data_path="rotation_euler", frame=250)
 
-    # 4. LIGHTING (EXACT JUPITER SETTINGS)
+    # 4. LIGHTING
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
     light_main = bpy.context.active_object; light_main.data.energy = 35000 
     
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
-    light_rim = bpy.context.active_object; light_rim.data.energy = 7000
+    light_rim = bpy.context.active_object; light_rim.data.energy = 5000
     
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))
     light_fill = bpy.context.active_object; light_fill.data.energy = 400 
@@ -62,11 +65,9 @@ def setup_scene():
     bpy.ops.object.camera_add(location=(0, -12, 0), rotation=(1.57, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
 
-    # 6. RENDER & UPDATED COLOR MANAGEMENT
+    # 6. RENDER & COLOR MANAGEMENT
     bpy.context.scene.render.engine = 'CYCLES'
     bpy.context.scene.cycles.samples = 64
-    
-    # FIXED FOR BLENDER 4.0+: Added "AgX - " prefix
     bpy.context.scene.view_settings.look = 'AgX - Medium High Contrast'
 
 setup_scene()

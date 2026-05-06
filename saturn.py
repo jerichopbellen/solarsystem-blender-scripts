@@ -121,9 +121,9 @@ def setup_scene():
 
     # 6. Lighting
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
-    bpy.context.active_object.data.energy = 60000 
+    bpy.context.active_object.data.energy = 75000 
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
-    bpy.context.active_object.data.energy = 6000
+    bpy.context.active_object.data.energy = 4000
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))
     bpy.context.active_object.data.energy = 400 
     bpy.ops.object.light_add(type='POINT', location=(0, -5, -8))
@@ -135,8 +135,7 @@ def setup_scene():
     bpy.ops.object.camera_add(location=(0, -22, 4), rotation=(1.4, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
     bpy.context.scene.render.engine = 'CYCLES'
-    bpy.context.scene.cycles.samples = 512
-    bpy.context.scene.render.use_motion_blur = True
+    bpy.context.scene.cycles.samples = 64
     bpy.context.scene.view_settings.look = 'AgX - Medium High Contrast'
 
 setup_scene()

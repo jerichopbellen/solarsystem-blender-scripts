@@ -2,7 +2,6 @@ import bpy
 import math
 
 # --- CONFIGURATION ---
-# Neptune is slightly smaller than Uranus but much denser
 NEPTUNE_RADIUS = 2.9 
 NEPTUNE_TEX_PATH = "C:/Users/jefbe/Downloads/solar system assets/2k_neptune.jpg" 
 
@@ -28,9 +27,8 @@ def setup_scene():
     hsv = nodes.new('ShaderNodeHueSaturation') 
     
     bsdf.inputs['Roughness'].default_value = 0.8 
-    # Neptune is a much deeper blue than Uranus, so we keep saturation high
     hsv.inputs['Saturation'].default_value = 1.6  
-    hsv.inputs['Value'].default_value = 0.6       # Lowered slightly for richer blue
+    hsv.inputs['Value'].default_value = 0.6 
     
     try:
         tex.image = bpy.data.images.load(NEPTUNE_TEX_PATH)
@@ -38,31 +36,31 @@ def setup_scene():
         links.new(tex.outputs['Color'], hsv.inputs['Color'])
         links.new(hsv.outputs['Color'], bsdf.inputs['Base Color'])
     except:
-        # Deep Royal Blue fallback
         bsdf.inputs['Base Color'].default_value = (0.02, 0.15, 0.6, 1) 
         
     links = mat.node_tree.links
     links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     neptune.data.materials.append(mat)
 
-    # 3.5 ROTATION & AXIAL TILT
-    # Neptune's tilt is ~28.3 degrees (standard planet rotation)
-    neptune.rotation_euler[0] = math.radians(28.3)
+    # 3.5 ROTATION (NO TILT)
+    # Reset tilt to 0 and animate Z-axis rotation
+    neptune.rotation_euler = (0, 0, 0)
     neptune.keyframe_insert(data_path="rotation_euler", frame=1)
+    
     neptune.rotation_euler[2] = math.radians(360)
     neptune.keyframe_insert(data_path="rotation_euler", frame=250)
 
-    # 4. LIGHTING (EXACT JUPITER SETTINGS AS REQUESTED)
+    # 4. LIGHTING
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
     light_main = bpy.context.active_object; light_main.data.energy = 35000 
     
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
-    light_rim = bpy.context.active_object; light_rim.data.energy = 7000
+    light_rim = bpy.context.active_object; light_rim.data.energy = 5000
     
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))
     light_fill = bpy.context.active_object; light_fill.data.energy = 600 
 
-    # 5. CAMERA (EXACT JUPITER SETTINGS)
+    # 5. CAMERA
     bpy.ops.object.camera_add(location=(0, -12, 0), rotation=(1.57, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
 

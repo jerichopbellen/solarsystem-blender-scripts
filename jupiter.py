@@ -9,10 +9,15 @@ def setup_scene():
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
 
-    # 2. Create Jupiter
+    # 2. Create Jupiter (High Resolution + Subdivision)
     bpy.ops.mesh.primitive_uv_sphere_add(segments=128, ring_count=64, radius=JUPITER_RADIUS)
     jupiter = bpy.context.active_object
     jupiter.name = "Jupiter"
+    
+    # Add Subdivision for perfect roundness in video
+    subsurf = jupiter.modifiers.new(name="Subsurf", type='SUBSURF')
+    subsurf.levels = 2
+    subsurf.render_levels = 2
     bpy.ops.object.shade_smooth()
 
     # 3. Material
@@ -21,17 +26,24 @@ def setup_scene():
     nodes = mat.node_tree.nodes; nodes.clear()
     out = nodes.new('ShaderNodeOutputMaterial')
     bsdf = nodes.new('ShaderNodeBsdfPrincipled') 
-    tex = nodes.new('ShaderNodeTexImage')
     
+    # Applied your requested Roughness
     bsdf.inputs['Roughness'].default_value = 0.8 
-    bsdf.inputs['Base Color'].default_value = (0.8, 0.7, 0.5, 1) 
     
     try:
+        tex = nodes.new('ShaderNodeTexImage')
         tex.image = bpy.data.images.load(JUPITER_TEX_PATH)
+        
+        # New HSV Node for that saturated "blue push" and value control
+        hsv = nodes.new('ShaderNodeHueSaturation')
+        hsv.inputs['Saturation'].default_value = 1.8  # Stronger push
+        hsv.inputs['Value'].default_value = 0.7       # Prevents white-out
+        
         links = mat.node_tree.links
-        links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+        links.new(tex.outputs['Color'], hsv.inputs['Color'])
+        links.new(hsv.outputs['Color'], bsdf.inputs['Base Color'])
     except:
-        pass 
+        bsdf.inputs['Base Color'].default_value = (0.8, 0.7, 0.5, 1) 
         
     links = mat.node_tree.links
     links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
@@ -45,18 +57,14 @@ def setup_scene():
     jupiter.rotation_euler = (0, 0, 6.28); jupiter.keyframe_insert(data_path="rotation_euler", frame=250)
 
     # 4. LIGHTING
-    # Key Light
     bpy.ops.object.light_add(type='POINT', location=(12, -18, 8))
     light_main = bpy.context.active_object; light_main.data.energy = 35000 
     
-    # Rim Light (Optimized for Camera Visibility)
-    # Moved X inward to -6 and Y to 8 to catch the rim more sharply from the camera's POV
     bpy.ops.object.light_add(type='POINT', location=(-7, 8, 0.5))
     light_rim = bpy.context.active_object
     light_rim.name = "RimLight"
-    light_rim.data.energy = 150000 
+    light_rim.data.energy = 7000
     
-    # Fill Light (Weakened for contrast)
     bpy.ops.object.light_add(type='POINT', location=(-10, -5, 0))
     light_fill = bpy.context.active_object
     light_fill.data.energy = 400 
@@ -65,7 +73,7 @@ def setup_scene():
     bpy.ops.object.camera_add(location=(0, -12, 0), rotation=(1.57, 0, 0))
     bpy.context.scene.camera = bpy.context.active_object
 
-    # 6. RENDER
+    # 6. RENDER SETTINGS 
     bpy.context.scene.render.engine = 'CYCLES'
     bpy.context.scene.cycles.samples = 64
 

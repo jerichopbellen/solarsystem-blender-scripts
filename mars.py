@@ -53,7 +53,7 @@ def setup_scene():
     light_main = bpy.context.active_object; light_main.data.energy = 5000 
     
     bpy.ops.object.light_add(type='POINT', location=(-1.5, 2, -0.3))
-    light_rim = bpy.context.active_object; light_rim.data.energy = 1000 
+    light_rim = bpy.context.active_object; light_rim.data.energy = 200 
     
     bpy.ops.object.light_add(type='POINT', location=(-2, -1, 0))
     light_fill = bpy.context.active_object; light_fill.data.energy = 30 
